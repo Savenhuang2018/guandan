@@ -9,8 +9,16 @@ const VOICE = {
   native: false,          // 是否有原生 bridge
   ready: false,           // speechSynthesis 是否可用
   lastText: '',
-  lastAt: 0
+  lastAt: 0,
+  pending: {},            // id -> 等待该句说完的回调
+  lastId: 0               // 最近一次 speakTracked 返回的 id
 };
+
+/* 语音说完的最长等待(ms)。
+ * 兜底存在的理由: TTS 引擎可能不回调 onDone(被系统杀、引擎异常),
+ * 若无超时游戏会永久卡住不再出牌。宁可早出也不能死锁。
+ */
+const VOICE_WAIT_MAX = 2200;
 
 function voiceInit() {
   VOICE.native = !!(window.AndroidTTS && window.AndroidTTS.speak);
@@ -20,6 +28,47 @@ function voiceInit() {
     try { window.speechSynthesis.getVoices(); } catch (e) {}
   }
   return VOICE.native ? 'native' : (VOICE.ready ? 'web' : 'none');
+}
+
+/* 原生侧播报完成回调(Java 的 UtteranceProgressListener → 这里) */
+function voiceDone(id, interrupted) {
+  const cb = VOICE.pending[id];
+  if (!cb) return;
+  delete VOICE.pending[id];
+  cb(!!interrupted);
+}
+
+/* 说完这句后执行 cb。
+ * 无论走原生/web/静音/失败, cb 都保证被调用恰好一次(超时兜底)。
+ */
+function voiceSayThen(text, cb) {
+  const once = (function () {
+    let done = false;
+    return function () { if (!done) { done = true; cb && cb(); } };
+  })();
+
+  if (!VOICE.on || !text) { once(); return false; }
+
+  // 原生: 用 speakTracked 拿 id, 等 onDone
+  if (VOICE.native && window.AndroidTTS.speakTracked) {
+    let id = -1;
+    try { id = window.AndroidTTS.speakTracked(text); } catch (e) { id = -1; }
+    if (id > 0) {
+      VOICE.lastId = id;
+      VOICE.pending[id] = once;
+      setTimeout(function () {          // 兜底: 回调丢失也不卡死
+        if (VOICE.pending[id]) { delete VOICE.pending[id]; once(); }
+      }, VOICE_WAIT_MAX);
+      return true;
+    }
+    // id<=0: 未就绪, 退回普通播报 + 估时
+  }
+
+  const spoke = voiceSay(text);
+  // web/回退路径无完成事件, 按字数估时(中文约 190ms/字, 封顶)
+  const est = spoke ? Math.min(VOICE_WAIT_MAX, 320 + text.length * 190) : 0;
+  setTimeout(once, est);
+  return spoke;
 }
 
 function voiceSay(text) {
@@ -83,8 +132,22 @@ function voicePlay(e, cards, level) {
   return t;
 }
 
+/* 出牌播报 + 说完回调(供 AI 等上家把话说完) */
+function voicePlayThen(e, cards, level, cb) {
+  const t = voiceTextForPlay(e, cards, level);
+  if (!t) { cb && cb(); return ''; }
+  voiceSayThen(t, cb);
+  return t;
+}
+
 /* 过牌播报 */
 function voicePass() {
   voiceSay('不要');
+  return '不要';
+}
+
+/* 过牌播报 + 说完回调 */
+function voicePassThen(cb) {
+  voiceSayThen('不要', cb);
   return '不要';
 }

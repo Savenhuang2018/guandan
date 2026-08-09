@@ -290,6 +290,66 @@ adb logcat -d | grep GuandanWV
 - **横屏媒体查询要放文件末尾**，与前面同特异性的规则靠后才生效。
 - **模拟器 OOM 会杀 WebView 进程**，表现为画面莫名退回初始态。查 `adb logcat -d | grep -i "lowmemorykiller.*webview"`，启动加 `-memory 2048` 缓解。这不是代码 bug。
 - **`sUseWideViewPort=false`** 锁横屏防闪。
+- **探针断言失败先怀疑装的是旧 APK**。本轮 3 项计时器断言报错，加诊断字段后发现值全对 —— 是上一版残留。改代码后务必 `force-stop` + 重装再测，且**探针里带诊断字段**（弹窗状态、手牌数、running），失败时才有据可查而不是瞎猜。
+- **patch 替换函数头会让函数体悬空**。改 `showDlg(...)` 那一行时把函数签名整个替换掉，函数体成了裸语句块，`node --check` 立即报 `Unexpected token '}'`。改函数签名时要连同 `{` 一起匹配。
+- **别凭记忆写函数名**。`restartGame` 里我写了不存在的 `renderHud()`/`startRound()` —— HUD 实际由 `renderSeats()` 内部刷新，重开只需 `deal()`。落笔前 `grep -q "function X"` 确认。
+- **vision_analyze 在本项目上反复超时**，两轮都失败。用探针输出量化几何（`getBoundingClientRect` + 重叠检测 + `scrollHeight>clientHeight`）代替视觉核验，更可靠也更快。
+- **真实点击必须验**。探针只验 DOM 和函数存在，验不出事件绑定漏了。用 `MENUXY` 探针输出 `devicePixelRatio` 换算后的设备坐标，再 `adb shell input tap` 真点，才算证明链路通。
+
+### 1.10 提示按「最少出牌次数」推荐
+
+原实现只按 `e.val` 牌力排序，手上有顺子时顺子里的**小单张 val 最低会被优先推荐**，等于拆掉一手好牌去跟一张单牌。
+
+改为按**拆牌代价**排序，复用 `arrange.js` 的最少手数算法：
+
+```
+代价 = 出这组后剩余手牌的最少手数 − (整手最少手数 − 1)
+代价 0  → 这组正好是拆分方案里的一手，不破坏结构
+代价 >0 → 拆牌了，后续要多花手数
+```
+
+排序优先级：非炸弹 > 炸弹 → 代价小 → 牌力小 → 张数少。
+
+实测（3♠4♠5♠6♠7♠ + 对K + 单A + 单9，上家出单 5）：
+
+| | 首选 | 代价 |
+|---|---|---|
+| 旧 | 单张 **6**（拆同花顺） | **4** |
+| 新 | 单张 **9**（散牌） | **0** |
+
+性能保护：候选 >40 个先按牌力粗筛，`budget` 从 24000 降到 4000（提示要即时响应，不需要精确最优解）。
+
+### 1.11 各家独立计时器
+
+`startTurnTimer(seat)` 支持任意座位，`TIMER_EL = ['hTimerChip','tE','tN','tW']` 映射到各自 DOM。座位 0 用手牌上沿那个，AI 三家用头像旁小圆牌（`.seattimer`）。
+
+- `clearTurnTimer()` 熄灭**全部四个**，防止切换回合时残留上一家的
+- AI 超时不强制代打（它本就会出），交回 `scheduleAi()`
+- 已出完牌的座位不计时
+
+### 1.12 AI 等语音播完再出牌
+
+原先 AI 固定延时 620~1040ms 就出牌，与语音时长无关 → 长牌型（「三带二」「同花顺」）必被下一家的 `QUEUE_FLUSH` 打断。
+
+三层改造：
+
+| 层 | 改动 |
+|---|---|
+| Java | `UtteranceProgressListener.onDone` → `speakTracked(text, id)` 回调 JS |
+| voice.js | `voiceSayThen(text, cb)` / `VOICE.pending` 按 id 追踪 |
+| game.js | `G.voiceGate` 门闩，`scheduleAi()` 等它放行 |
+
+**关键防御**：2.2 秒超时兜底。TTS 引擎可能不回调 `onDone`，没兜底游戏会永久卡死不出牌 —— 宁可早出也不能死锁。`G.gateSeq` 序号防过期回调乱入。
+
+### 1.13 菜单
+
+HUD 右侧 `☰` 打开，含游戏规则 / 重新开始 / 退出游戏。
+
+- z-index：`#mask` 80 < `#menuMask` 85 < `#rulesMask` 90 —— 结算弹窗打开时也能开菜单
+- 打开菜单暂停计时（`clearTurnTimer`），关闭时恢复当前回合者
+- 规则文本 `max-height:min(58vh,240px)` + `overflow-y:auto` —— 横屏可用高度仅约 412px，不滚动会溢出
+- 物理返回键 `window.onAndroidBack` 按层级依次关闭；逢人配弹窗不给退
+- 退出走 `window.AndroidApp.quit()` → `finish()`，浏览器调试下降级为首屏
 
 ---
 
@@ -297,7 +357,8 @@ adb logcat -d | grep GuandanWV
 
 | 版本 | 内容 |
 |---|---|
-| v1.6（进行中） | 名次标记持久化、摄像头避让；🔨 按钮上移按需显示、选中牌左锁列、按话分列理牌 |
+| **v1.7** | 提示按最少手数推荐、各家独立计时器、AI 等语音播完再出牌、操作键按需显隐、菜单（规则/重开/退出）；🔨 选中牌左锁列、按话分列理牌 |
+| v1.6 | 名次标记持久化、摄像头避让、HUD 移左上角、倒计时归位 |
 | v1.5 | 原生 TTS 语音报牌型、首出 20 秒 |
 | v1.4 | 四家出牌分方位显示、隐藏他人手牌、牌数 <10 才显示 |
 | v1.3 | 滑动选牌、自动理牌、记牌器 |

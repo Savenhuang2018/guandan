@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>掼蛋</title>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=22">
 </head>
 <body>
 <div id="table">
@@ -16,10 +16,15 @@
     <div class="chip them">对方 <b id="hThem">2</b></div>
     <div class="chip">第 <b id="hRound">1</b> 局</div>
     <div class="chip" id="hVoice" style="cursor:pointer">🔊</div>
+    <div class="chip" id="hMenu" style="cursor:pointer">☰</div>
   </div>
 
   <!-- 倒计时: 跟到当前出牌人的出牌区旁(仅人类座位计时) -->
-  <div class="turntimer" id="hTimerChip">⏱ <b id="hTimer">--</b></div>
+  <div class="turntimer" id="hTimerChip">⏱ <b id="hTimer">--</b>s</div>
+  <!-- 各家独立计时器: 轮到谁就在谁的座位旁显示 -->
+  <div class="seattimer" id="tE"><b>--</b></div>
+  <div class="seattimer" id="tN"><b>--</b></div>
+  <div class="seattimer" id="tW"><b>--</b></div>
 
   <div class="seat" id="seatN">
     <div class="avatar">🤖</div>
@@ -58,10 +63,15 @@
   <div class="passtag" id="pS">不要</div>
   <div class="ranktag" id="rS"></div>
 
-  <div id="bar">
+  <!-- 操作键: 仅轮到我出牌时显示, 位置在牌型区上方(靠近视线焦点) -->
+  <div id="actbar">
     <div class="btn ghost" id="btnPass">不要</div>
+    <div class="btn" id="btnHint">提示</div>
     <div class="btn" id="btnPlay">出牌</div>
-    <div class="btn ghost" id="btnHint">提示</div>
+  </div>
+
+  <!-- 辅助键: 随时可用, 常驻底部 -->
+  <div id="bar">
     <div class="btn ghost" id="btnSort">理牌</div>
     <div class="btn ghost" id="btnCount">记牌</div>
   </div>
@@ -79,12 +89,28 @@
     <p id="dBody">四人两队 · 打级升A<br>你与「对家」是一队</p>
     <div class="btn" id="dBtn">开始</div>
   </div></div>
+
+  <!-- 菜单面板: 游戏规则 / 重新开始 / 退出游戏 -->
+  <div id="menuMask"><div id="menuBox">
+    <div class="mTtl">菜单</div>
+    <div class="mItem" id="mRules">📖 游戏规则</div>
+    <div class="mItem" id="mRestart">🔄 重新开始</div>
+    <div class="mItem" id="mQuit">🚪 退出游戏</div>
+    <div class="mItem mCancel" id="mClose">✕ 关闭</div>
+  </div></div>
+
+  <!-- 规则说明(长文, 可滚动) -->
+  <div id="rulesMask"><div id="rulesBox">
+    <div class="mTtl">掼蛋规则</div>
+    <div id="rulesBody"></div>
+    <div class="btn" id="rulesClose">知道了</div>
+  </div></div>
 </div>
 
-<script src="rules.js?v=19"></script>
-<script src="ai.js?v=19"></script>
-<script src="arrange.js?v=19"></script>
-<script src="voice.js?v=19"></script>
-<script src="game.js?v=19"></script>
+<script src="rules.js?v=22"></script>
+<script src="ai.js?v=22"></script>
+<script src="arrange.js?v=22"></script>
+<script src="voice.js?v=22"></script>
+<script src="game.js?v=22"></script>
 </body>
 </html>

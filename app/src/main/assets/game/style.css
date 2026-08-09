@@ -168,10 +168,24 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
 }
 
 /* ===== 按钮区 ===== */
+/* ===== 辅助键(理牌/记牌): 常驻左下 ===== */
 #bar{
-  position:absolute;bottom:calc(14px + var(--sa-bottom));left:50%;transform:translateX(-50%);
+  position:absolute;bottom:calc(14px + var(--sa-bottom));
+  left:calc(14px + var(--sa-left));
   display:flex;gap:8px;align-items:center;z-index:30
 }
+
+/* ===== 操作键(不要/提示/出牌) =====
+ * 仅 G.running && G.turn===0 时显示(updateBar 切 .on), 其余时刻 display:none 不占位。
+ * 放右下角: 与 #bar 同一行错开左右, 既贴近手牌又是拇指最顺的位置。
+ * 不能放手牌上沿 —— 那一带已被 #zS/#pS/#rS/.turntimer 占满(bottom:214px)。
+ */
+#actbar{
+  position:absolute;bottom:calc(14px + var(--sa-bottom));
+  right:calc(14px + var(--sa-right));
+  display:none;gap:8px;align-items:center;z-index:30
+}
+#actbar.on{display:flex}
 .btn{
   padding:9px 16px;border-radius:20px;font-size:14px;font-weight:600;color:#3a2a08;
   background:linear-gradient(#ffe08a,#e8b64a);border:1px solid #b98c2a;
@@ -240,6 +254,46 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
  75%{opacity:1}100%{transform:translate(-50%,-34px) scale(1);opacity:0}}
 
 /* ===== 弹窗 ===== */
+/* ===== 菜单面板 =====
+ * z-index 85/90 高于 #mask(80): 结算弹窗打开时也能开菜单。
+ * 横屏可用高度仅约 412px, 规则文本必须可滚动(max-height + overflow)。
+ */
+#menuMask{position:absolute;inset:0;background:rgba(0,0,0,.66);z-index:85;display:none;
+  align-items:center;justify-content:center}
+#menuMask.on{display:flex}
+#menuBox{
+  min-width:210px;padding:14px 16px;border-radius:14px;text-align:center;color:#f7edd6;
+  background:linear-gradient(#1f5540,#143b2c);border:2px solid #ffd76a;
+  box-shadow:0 20px 50px rgba(0,0,0,.6)
+}
+.mTtl{font-size:16px;font-weight:700;color:#ffd76a;margin-bottom:10px;letter-spacing:1px}
+.mItem{
+  padding:9px 14px;margin:6px 0;border-radius:10px;font-size:14px;cursor:pointer;
+  background:rgba(255,255,255,.09);border:1px solid rgba(246,231,200,.28);
+  transition:background .12s
+}
+.mItem:active{background:rgba(255,215,106,.3)}
+.mCancel{opacity:.75;font-size:13px}
+
+#rulesMask{position:absolute;inset:0;background:rgba(0,0,0,.72);z-index:90;display:none;
+  align-items:center;justify-content:center}
+#rulesMask.on{display:flex}
+#rulesBox{
+  width:min(86%,560px);padding:14px 18px;border-radius:14px;color:#f7edd6;text-align:center;
+  background:linear-gradient(#1f5540,#143b2c);border:2px solid #ffd76a;
+  box-shadow:0 20px 50px rgba(0,0,0,.6)
+}
+#rulesBody{
+  max-height:min(58vh,240px);overflow-y:auto;text-align:left;
+  font-size:12.5px;line-height:1.75;margin:4px 0 10px;
+  padding-right:6px;-webkit-overflow-scrolling:touch
+}
+#rulesBody h4{color:#ffd76a;font-size:13px;margin:9px 0 3px}
+#rulesBody h4:first-child{margin-top:0}
+#rulesBody b{color:#ffd76a}
+#rulesBody ul{margin:0 0 0 16px}
+#rulesBody li{margin:2px 0}
+
 #mask{position:absolute;inset:0;background:rgba(0,0,0,.62);z-index:80;display:none;
   align-items:center;justify-content:center}
 #mask.on{display:flex}
@@ -304,6 +358,29 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
  * 位置跟到当前出牌人的出牌区旁(默认我方,在手牌上方)
  * 独立于 #hud —— 原先挂在顶部信息条里,离视线焦点(手牌/出牌区)太远
  */
+/* ===== 各家独立计时器 =====
+ * 轮到谁就在谁头像旁亮起。位置贴着各自座位错开, 不与头像/名字重叠:
+ *   #seatN top:64px 居中(高约72px) → tN 放其下方 top:140px
+ *   #seatW/E left|right:34px 宽46px → tW/tE 放头像内侧偏下
+ * 我(座位0)沿用 .turntimer(手牌上沿靠右), 不用这套。
+ */
+.seattimer{
+  position:absolute;z-index:32;display:none;
+  min-width:26px;padding:2px 7px;border-radius:11px;
+  font-size:12px;font-weight:700;text-align:center;
+  color:#ffd76a;background:rgba(0,0,0,.62);
+  border:1px solid #5c8f74;box-shadow:0 2px 6px rgba(0,0,0,.5);
+  white-space:nowrap;pointer-events:none;
+}
+.seattimer.on{display:block}
+.seattimer.urgent{
+  color:#fff;background:rgba(190,32,32,.92);border-color:#ff8080;
+  animation:tick .5s ease-in-out infinite;
+}
+#tN{top:140px;left:50%;transform:translateX(-50%)}
+#tW{left:calc(30px + var(--sa-left));top:calc(47% + 40px)}
+#tE{right:calc(30px + var(--sa-right));top:calc(47% + 40px)}
+
 .turntimer{
   position:absolute;z-index:31;display:none;
   /* 靠右错开: #zS/#pS/#rS 都居中在同一 bottom,居中会四者重叠 */
@@ -331,6 +408,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   #hud{top:calc(6px + var(--sa-top));left:calc(8px + var(--sa-left));gap:6px}
   .chip{padding:4px 9px;font-size:12px}
   #bar{bottom:calc(6px + var(--sa-bottom));gap:6px}
+  #actbar{bottom:calc(6px + var(--sa-bottom));gap:6px}
   .btn{padding:6px 13px;font-size:13px}
   #hand{bottom:calc(46px + var(--sa-bottom));height:158px}
   #hand .card{width:38px;height:54px}
@@ -365,6 +443,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   #hud{top:calc(3px + var(--sa-top))}
   .chip{padding:3px 7px;font-size:11px}
   #bar{bottom:calc(3px + var(--sa-bottom))}
+  #actbar{bottom:calc(3px + var(--sa-bottom))}
   .btn{padding:5px 11px;font-size:12px}
   #hand{bottom:calc(38px + var(--sa-bottom));height:134px}
   #hand .card{width:34px;height:48px}

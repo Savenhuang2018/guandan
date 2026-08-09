@@ -13,6 +13,9 @@ public class MainActivity extends Activity {
     private WebView web;
     private android.speech.tts.TextToSpeech tts;
     private volatile boolean ttsReady = false;
+    /** 播报序号: 每句自增, 用于把 onDone 回调对上是哪一句 */
+    private final java.util.concurrent.atomic.AtomicInteger uttSeq =
+        new java.util.concurrent.atomic.AtomicInteger(0);
 
     /** 暴露给 H5 的原生 TTS 桥: window.AndroidTTS.speak(text) */
     public class TTSBridge {
@@ -22,8 +25,46 @@ public class MainActivity extends Activity {
             // QUEUE_FLUSH: 打断上一句,跟上出牌节奏
             tts.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "gd");
         }
+
+        /**
+         * 带完成回调的播报: 说完后调用 H5 的 window.voiceDone(id)。
+         * 返回本句的 id; 返回 -1 表示没能发声(未就绪), 调用方应立即走兜底不必等。
+         * 用途: AI 出牌要等上家把话说完再出, 避免语音被打断。
+         */
+        @android.webkit.JavascriptInterface
+        public int speakTracked(String text) {
+            if (!ttsReady || tts == null || text == null || text.isEmpty()) return -1;
+            final int id = uttSeq.incrementAndGet();
+            tts.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, "gd#" + id);
+            return id;
+        }
+
         @android.webkit.JavascriptInterface
         public boolean ready() { return ttsReady; }
+    }
+
+    /** 应用控制桥: window.AndroidApp.quit() 退出游戏 */
+    public class AppBridge {
+        @android.webkit.JavascriptInterface
+        public void quit() {
+            runOnUiThread(new Runnable() {
+                @Override public void run() { finish(); }
+            });
+        }
+    }
+
+    /** 把 utteranceId 里的序号回传给 H5(主线程执行 evaluateJavascript) */
+    private void notifyVoiceDone(String utteranceId, final boolean interrupted) {
+        if (utteranceId == null || !utteranceId.startsWith("gd#")) return;
+        final String idStr = utteranceId.substring(3);
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                if (web == null) return;
+                web.evaluateJavascript(
+                    "window.voiceDone&&window.voiceDone(" + idStr + ","
+                    + (interrupted ? "true" : "false") + ")", null);
+            }
+        });
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -370,6 +411,8 @@ public class MainActivity extends Activity {
         // 原生 TTS: WebView 的 speechSynthesis 在安卓上不可靠(依赖 Google TTS + 用户手势),
         // 用 JS bridge 把系统 TTS 暴露给 H5
         web.addJavascriptInterface(new TTSBridge(), "AndroidTTS");
+        // 应用控制桥: 菜单里的"退出游戏"需要调 finish()
+        web.addJavascriptInterface(new AppBridge(), "AndroidApp");
         tts = new android.speech.tts.TextToSpeech(this,
             new android.speech.tts.TextToSpeech.OnInitListener() {
                 @Override public void onInit(int status) {
@@ -383,6 +426,21 @@ public class MainActivity extends Activity {
                              && r != android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED);
                     android.util.Log.i("GuandanWV", "TTS_READY " + ttsReady + " lang=" + r
                         + " engine=" + tts.getDefaultEngine());
+                    // 播报完成监听: 让 H5 能"等这句说完"再继续(AI 出牌节奏)
+                    tts.setOnUtteranceProgressListener(
+                        new android.speech.tts.UtteranceProgressListener() {
+                            @Override public void onStart(String id) {}
+                            @Override public void onDone(String id) {
+                                notifyVoiceDone(id, false);
+                            }
+                            @Override public void onError(String id) {
+                                // 出错也要回调, 否则等待方会一直挂着
+                                notifyVoiceDone(id, true);
+                            }
+                            @Override public void onStop(String id, boolean interrupted) {
+                                notifyVoiceDone(id, true);
+                            }
+                        });
                     // TTS 异步就绪,回头通知 H5 重新探测(避免首句丢)
                     web.post(new Runnable() { @Override public void run() {
                         web.evaluateJavascript(
@@ -607,6 +665,143 @@ public class MainActivity extends Activity {
                     });
             }
         }, new android.content.IntentFilter("com.aiden.guandan.HUDTEST"),
+           android.content.Context.RECEIVER_EXPORTED);
+
+        // 验证节奏改造: adb shell am broadcast -a com.aiden.guandan.RHYTHM
+        // 检查 1) 各家独立计时器 2) 语音门闩(AI 等上家说完) 3) #actbar 按需显隐
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context c, android.content.Intent i) {
+                if (web == null) return;
+                web.evaluateJavascript(
+                    "(function(){try{"
+                    + "var out={};"
+                    + "var R=function(id){var e=document.getElementById(id);"
+                    + "  if(!e)return null;var r=e.getBoundingClientRect();"
+                    + "  return {t:Math.round(r.top),l:Math.round(r.left),"
+                    + "          w:Math.round(r.width),h:Math.round(r.height),"
+                    + "          on:e.classList.contains('on')};};"
+                    // ---- 1) 四个座位的计时器 DOM 都存在 ----
+                    + "out.timerEls=['hTimerChip','tE','tN','tW'].map(function(x){"
+                    + "  return !!document.getElementById(x);});"
+                    + "out.allTimersExist=out.timerEls.every(Boolean);"
+                    // ---- 2) AI 座位起表: 计时器应亮在对应头像旁 ----
+                    + "out.dbg_maskOn=document.getElementById('mask')"
+                    + "  .classList.contains('on');"
+                    + "out.dbg_wildOn=document.getElementById('wildPick')"
+                    + "  .classList.contains('on');"
+                    + "out.dbg_handLen2=G.hands[2].length;"
+                    + "out.dbg_running=G.running;"
+                    + "G.running=true;G.turn=2;G.lastPlay=null;"
+                    + "startTurnTimer(2);"
+                    + "out.aiTimerOn=R('tN')?R('tN').on:false;"
+                    + "out.aiTimerOwner=G.turnOwner;"
+                    + "out.aiTimerLeft=G.turnLeft;"
+                    // 只有一个计时器亮着(不残留别家)
+                    + "out.litCount=['hTimerChip','tE','tN','tW'].filter(function(x){"
+                    + "  var e=document.getElementById(x);"
+                    + "  return e&&e.classList.contains('on');}).length;"
+                    + "out.onlyOneLit=(out.litCount===1);"
+                    // ---- 3) 计时器不与自家头像重叠 ----
+                    + "var ov=function(a,b){if(!a||!b)return false;"
+                    + "  return !(a.l+a.w<=b.l||b.l+b.w<=a.l||a.t+a.h<=b.t||b.t+b.h<=a.t);};"
+                    + "out.tN_vs_seatN=ov(R('tN'),R('seatN'));"
+                    + "out.tW_vs_seatW=ov(R('tW'),R('seatW'));"
+                    + "out.tE_vs_seatE=ov(R('tE'),R('seatE'));"
+                    // ---- 4) 切到我方: AI 计时器必须熄灭 ----
+                    + "G.turn=0;startTurnTimer(0);"
+                    + "out.myTimerOn=R('hTimerChip')?R('hTimerChip').on:false;"
+                    + "out.aiTimerCleared=!(R('tN')&&R('tN').on);"
+                    // ---- 5) #actbar 按需显隐 ----
+                    + "updateBar();"
+                    + "out.actbarShownMyTurn=R('actbar')?R('actbar').on:false;"
+                    + "G.turn=2;updateBar();"
+                    + "out.actbarHiddenAiTurn=!(R('actbar')&&R('actbar').on);"
+                    + "out.actbar=R('actbar');out.bar=R('bar');"
+                    + "out.actbar_vs_bar=ov(R('actbar'),R('bar'));"
+                    // ---- 6) 语音门闩: 存在且能兜底放行 ----
+                    + "out.hasGateFns=(typeof setVoiceGate==='function')"
+                    + "  &&(typeof voiceSayThen==='function')"
+                    + "  &&(typeof voiceDone==='function');"
+                    + "out.hasTrackedBridge=!!(window.AndroidTTS&&window.AndroidTTS.speakTracked);"
+                    // 登记一个门闩并确认 scheduleAi 会消费它
+                    + "var fired=false;setVoiceGate(function(cb){fired=true;cb();});"
+                    + "G.running=true;G.turn=2;scheduleAi();"
+                    + "out.gateConsumed=fired;"
+                    + "out.gateCleared=(G.voiceGate===null);"
+                    // ---- 7) 菜单: DOM/绑定/层级/规则文本 ----
+                    + "out.menuBtnExists=!!document.getElementById('hMenu');"
+                    + "out.menuFns=(typeof openMenu==='function')"
+                    + "  &&(typeof restartGame==='function')"
+                    + "  &&(typeof quitGame==='function')"
+                    + "  &&(typeof showRules==='function');"
+                    + "out.hasQuitBridge=!!(window.AndroidApp&&window.AndroidApp.quit);"
+                    + "out.hasBackHook=(typeof window.onAndroidBack==='function');"
+                    // 打开菜单 → 面板可见且计时停
+                    + "openMenu();"
+                    + "out.menuOpens=document.getElementById('menuMask')"
+                    + "  .classList.contains('on');"
+                    + "out.menuStopsTimer=(G.turnTimer===null);"
+                    // 菜单 z-index 必须高于结算弹窗(#mask 80)
+                    + "var zi=function(id){return parseInt(getComputedStyle("
+                    + "  document.getElementById(id)).zIndex)||0;};"
+                    + "out.z_menu=zi('menuMask');out.z_rules=zi('rulesMask');"
+                    + "out.z_mask=zi('mask');"
+                    + "out.menuAboveMask=(out.z_menu>out.z_mask);"
+                    + "out.rulesAboveMenu=(out.z_rules>out.z_menu);"
+                    // 规则面板: 打开后有内容且可滚动(不溢出屏幕)
+                    + "showRules();"
+                    + "var rb=document.getElementById('rulesBody');"
+                    + "out.rulesOpens=document.getElementById('rulesMask')"
+                    + "  .classList.contains('on');"
+                    + "out.rulesHasText=(rb.textContent.length>200);"
+                    + "var rr=document.getElementById('rulesBox').getBoundingClientRect();"
+                    + "out.rulesFitsScreen=(rr.top>=0&&rr.bottom<=innerHeight+1);"
+                    + "out.rulesScrollable=(rb.scrollHeight>rb.clientHeight);"
+                    // 规则文本必须与实现一致: 提到同花顺夹在5炸6炸之间 + 20/10秒
+                    + "var rt=rb.textContent;"
+                    + "out.rulesMentionsFlush=(rt.indexOf('同花顺')>=0);"
+                    + "out.rulesMentionsTimes=(rt.indexOf('20')>=0&&rt.indexOf('10')>=0);"
+                    + "out.rulesMentionsWild=(rt.indexOf('逢人配')>=0);"
+                    // 收尾: 全关掉
+                    + "document.getElementById('rulesMask').classList.remove('on');"
+                    + "closeMenu(false);"
+                    + "out.menuCloses=!document.getElementById('menuMask')"
+                    + "  .classList.contains('on');"
+                    + "clearTimeout(G.aiTimer);clearTurnTimer();"
+                    + "return JSON.stringify(out);"
+                    + "}catch(e){return 'ERR '+e.message}})()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override public void onReceiveValue(String s) {
+                            android.util.Log.i("GuandanWV", "RHYTHM " + s);
+                        }
+                    });
+            }
+        }, new android.content.IntentFilter("com.aiden.guandan.RHYTHM"),
+           android.content.Context.RECEIVER_EXPORTED);
+
+        // 输出 hMenu 的设备像素坐标, 供 adb input tap 真实点击验证
+        // adb shell am broadcast -a com.aiden.guandan.MENUXY
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context c, android.content.Intent i) {
+                if (web == null) return;
+                web.evaluateJavascript(
+                    "(function(){try{"
+                    + "var r=document.getElementById('hMenu').getBoundingClientRect();"
+                    + "var d=window.devicePixelRatio||1;"
+                    + "return JSON.stringify({x:Math.round((r.left+r.width/2)*d),"
+                    + "  y:Math.round((r.top+r.height/2)*d),dpr:d,"
+                    + "  menuOn:document.getElementById('menuMask')"
+                    + "    .classList.contains('on')});"
+                    + "}catch(e){return 'ERR '+e.message}})()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override public void onReceiveValue(String s) {
+                            android.util.Log.i("GuandanWV", "MENUXY " + s);
+                        }
+                    });
+            }
+        }, new android.content.IntentFilter("com.aiden.guandan.MENUXY"),
            android.content.Context.RECEIVER_EXPORTED);
 
         web.loadUrl("file:///android_asset/game/index.html");

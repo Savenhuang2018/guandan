@@ -24,6 +24,9 @@ const G = {
   hintList: [],
   hintIdx: 0,
   aiTimer: null,
+  voiceGate: null,          // 门闩: AI 出牌前要等的那句语音
+  gateSeq: 0,               // 门闩序号, 防过期回调乱入
+  turnOwner: -1,            // 当前计时归属的座位(-1=无)
   passed: [false, false, false, false],   // 本轮谁说了"不要"(新一轮清空)
   turnTimer: null,
   turnLeft: 0,
@@ -312,32 +315,55 @@ function toast(text, seat, bomb) {
 const TURN_LIMIT = 10;                            // 跟牌: 10秒
 const LEAD_LIMIT = 20;                            // 首出(领出)要规划整手,给20秒
 
+/* 座位 → 计时器 DOM(座位0 是我, 用手牌上沿那个; 其余用头像旁小圆牌) */
+const TIMER_EL = ['hTimerChip', 'tE', 'tN', 'tW'];
+
+function timerNodes(seat) {
+  const chip = $(TIMER_EL[seat]);
+  if (!chip) return { chip: null, num: null };
+  // 座位0 的数字在 #hTimer, 其余在各自的 <b>
+  const num = seat === 0 ? $('hTimer') : chip.querySelector('b');
+  return { chip, num };
+}
+
 function clearTurnTimer() {
   clearInterval(G.turnTimer);
   G.turnTimer = null;
   G.turnLeft = 0;
-  const el = $('hTimer'), chip = $('hTimerChip');
-  if (el) el.textContent = '--';
-  if (chip) chip.classList.remove('urgent', 'on');   // 不计时就隐藏,不再常驻显示 "--"
+  G.turnOwner = -1;
+  // 全部座位的计时器一起熄灭(防止切换回合时残留上一家的)
+  for (let s = 0; s < 4; s++) {
+    const { chip, num } = timerNodes(s);
+    if (num) num.textContent = '--';
+    if (chip) chip.classList.remove('urgent', 'on');
+  }
 }
 
-function startTurnTimer() {
+/* 起表: 每位玩家独立计时, seat 省略时为当前回合者 */
+function startTurnTimer(seat) {
   clearTurnTimer();
-  if (!G.running || G.turn !== 0) return;
+  if (!G.running) return;
+  const s = (seat === undefined) ? G.turn : seat;
+  if (s < 0 || s > 3) return;
+  if (G.hands[s].length === 0) return;              // 已出完的不计时
   // 弹窗打开时(逢人配/结算)不计时,避免玩家被强制打断
   if ($('wildPick').classList.contains('on') || $('mask').classList.contains('on')) return;
   // 领出(桌面无牌可跟)需要规划整手 → 20秒; 跟牌 → 10秒
   G.turnLeft = G.lastPlay ? TURN_LIMIT : LEAD_LIMIT;
-  const el = $('hTimer'), chip = $('hTimerChip');
-  if (el) el.textContent = G.turnLeft;
-  if (chip) chip.classList.add('on');                // 显示在我的出牌区上方
+  G.turnOwner = s;
+  const { chip, num } = timerNodes(s);
+  if (num) num.textContent = G.turnLeft;
+  if (chip) chip.classList.add('on');
   G.turnTimer = setInterval(() => {
     G.turnLeft--;
-    if (el) el.textContent = G.turnLeft;
+    if (num) num.textContent = G.turnLeft;
     if (chip) chip.classList.toggle('urgent', G.turnLeft <= 3);
     if (G.turnLeft <= 0) {
+      const owner = G.turnOwner;
       clearTurnTimer();
-      autoPlayTimeout();
+      // 只对人类强制代打; AI 超时说明它还在思考,交回 scheduleAi 即可
+      if (owner === 0) autoPlayTimeout();
+      else if (G.running && G.turn === owner) scheduleAi();
     }
   }, 1000);
 }
@@ -379,6 +405,9 @@ function autoPlayTimeout() {
 
 function updateBar() {
   const my = G.running && G.turn === 0;
+  // 操作键整条按需显隐: 非我回合完全不占位(display:none)
+  const ab = $('actbar');
+  if (ab) ab.classList.toggle('on', !!my);
   $('btnPlay').disabled = !my || G.sel.size === 0;
   $('btnPass').disabled = !my || !G.lastPlay;
   $('btnHint').disabled = !my;
@@ -463,8 +492,8 @@ function doTribute(order) {
     '<br><br>由 <b>' + SEAT_NAME[G.turn] + '</b> 先出',
     '开始', () => {
       toast('打 ' + G.curLevel, G.turn);
+      startTurnTimer(G.turn);         // 谁先出谁起表(AI 也显示)
       if (G.turn !== 0) scheduleAi();
-      else startTurnTimer();          // 我先出 → 起表
     });
 }
 
@@ -473,10 +502,29 @@ function cardText(c) {
   return SUIT_CH[c.s] + c.r;
 }
 
+/* AI 出牌调度: 必须等上家把话说完再出, 否则语音被 QUEUE_FLUSH 打断,
+ * 长牌型(如"三带二""同花顺")永远听不全。
+ * G.voiceGate 是一个 Promise 风格的门闩: 上一句说完才放行。
+ */
 function scheduleAi() {
   clearTimeout(G.aiTimer);
-  G.aiTimer = setTimeout(aiTurn, 620 + Math.random() * 420);
+  const seq = ++G.gateSeq;             // 防串: 期间若局面变了就作废
+  const go = () => {
+    if (seq !== G.gateSeq) return;      // 已被更新的调度取代
+    if (!G.running || G.turn === 0) return;
+    G.aiTimer = setTimeout(aiTurn, 260 + Math.random() * 240);
+  };
+  if (G.voiceGate) {
+    const g = G.voiceGate;
+    G.voiceGate = null;
+    g(go);                              // 说完后再排延时
+  } else {
+    go();
+  }
 }
+
+/* 登记一个"等这句说完"的门闩, 由 doPlay/doPass 调用 */
+function setVoiceGate(fn) { G.voiceGate = fn; }
 
 /* ---------- 座位轮转 ---------- */
 function nextSeat(s) {
@@ -500,7 +548,8 @@ function doPlay(seat, cards, e) {
   G.lastPlay = { seat, cards, e };
   const bomb = e.type === 'bomb';
   toast(typeName(e) + (bomb ? '!' : ''), seat, bomb);
-  voicePlay(e, cards, G.curLevel);                // 语音报牌型
+  // 语音报牌型, 并登记门闩: 下一家(AI)要等这句说完才出牌
+  setVoiceGate(cb => voicePlayThen(e, cards, G.curLevel, cb));
 
   if (G.hands[seat].length === 0) {
     G.finished.push(seat);
@@ -517,7 +566,7 @@ function doPass(seat) {
   if (seat === 0) clearTurnTimer();               // 我过牌了,立刻停表
   G.passed[seat] = true;                          // 持久标记"不要",直到新一轮
   toast('不要', seat);
-  voicePass();                                    // 语音报"不要"
+  setVoiceGate(cb => voicePassThen(cb));          // 语音报"不要" + 门闩
   refresh();
   advance();
 }
@@ -588,10 +637,10 @@ function advance() {
   updateBar();
 
   if (G.turn !== 0) {
-    clearTurnTimer();
+    startTurnTimer(G.turn);           // AI 也各自计时(显示在其头像旁)
     scheduleAi();
   } else {
-    startTurnTimer();                 // 轮到我 → 开始10秒倒计时
+    startTurnTimer(0);                // 轮到我 → 开始倒计时
   }
 }
 
@@ -656,25 +705,60 @@ function myPass() {
   doPass(0);
 }
 
+/* 提示: 按「最少出牌次数」推荐, 而非单纯按牌力大小。
+ *
+ * 原先只按 e.val 排序 → 手上有顺子时, 顺子里的小单张 val 最低会被优先推荐,
+ * 等于拆掉一手好牌去跟一张单牌。正确判据是"拆牌代价":
+ *   代价 = 出这组后剩余手牌的最少手数 - (整手最少手数 - 1)
+ *   代价 0 = 这组正好是拆分方案里的一手, 不破坏结构(最优)
+ *   代价 >0 = 出它会让后续多花手数(拆牌了)
+ * 同代价再按牌力小的优先(留大牌), 炸弹永远最后。
+ */
+function hintCost(cards, baseCount, level) {
+  const ids = new Set(cards.map(c => c.id));
+  const rest = G.hands[0].filter(c => !ids.has(c.id));
+  if (!rest.length) return 0;                    // 一把走完, 最优
+  // budget 调小: 提示要即时响应, 不需要精确最优解
+  const r = arrangeHand(rest, level, { budget: 4000, branch: 8 });
+  return r.count - (baseCount - 1);
+}
+
 function myHint() {
   if (G.turn !== 0) return;
   if (!G.hintList.length) {
     const prev = G.lastPlay ? G.lastPlay.e : null;
     const combos = genCombos(G.hands[0], G.curLevel).filter(o => beats(o.e, prev));
-    combos.sort((a, b) => {
-      if (a.e.type === 'bomb' && b.e.type !== 'bomb') return 1;
-      if (b.e.type === 'bomb' && a.e.type !== 'bomb') return -1;
+    if (!combos.length) { G.hintList = []; return toast('没有能出的牌', 0); }
+
+    // 整手的最少手数作为基准
+    const base = arrangeHand(G.hands[0], G.curLevel, { budget: 8000, branch: 10 });
+    const baseCount = base.count;
+
+    // 候选过多时先粗筛(避免每个都跑一次搜索): 按牌力取前 40 个
+    let pool = combos;
+    if (pool.length > 40) {
+      pool = pool.slice().sort((a, b) => a.e.val - b.e.val).slice(0, 40);
+    }
+    pool.forEach(o => { o._cost = hintCost(o.cards, baseCount, G.curLevel); });
+
+    pool.sort((a, b) => {
+      // 炸弹永远垫底(除非只剩它能出)
+      const ab = a.e.type === 'bomb' ? 1 : 0, bb = b.e.type === 'bomb' ? 1 : 0;
+      if (ab !== bb) return ab - bb;
+      if (a._cost !== b._cost) return a._cost - b._cost;   // 不拆牌的优先
       return a.e.val - b.e.val || a.cards.length - b.cards.length;
     });
-    G.hintList = combos;
+
+    G.hintList = pool;
     G.hintIdx = 0;
-    if (!combos.length) return toast('没有能出的牌', 0);
   }
   const pick = G.hintList[G.hintIdx % G.hintList.length];
   G.hintIdx++;
   G.sel = new Set(pick.cards.map(c => c.id));
   renderHand();
   updateBar();
+  // 首次提示时说明推荐理由(代价0 = 不拆牌)
+  if (G.hintIdx === 1 && pick._cost === 0) toast('提示: ' + typeName(pick.e) + '(不拆牌)', 0);
 }
 
 /* 理牌: 先算"最少出牌次数"的拆分,再按拆分结果重排手牌
@@ -780,6 +864,118 @@ function endRound() {
 }
 
 /* ---------- 弹窗 ---------- */
+/* ---------- 菜单 ---------- */
+/* 规则文本必须与 rules.js/game.js 的实际实现一致:
+ *   炸弹大小顺序见 cmpBomb (同花顺 bombLv=5.5, 夹在 5炸 和 6炸 之间)
+ *   升级步数见 endRound (双下+3 / 一带二+2 / 平局收尾+1)
+ */
+const RULES_HTML = `
+<h4>基本</h4>
+四人两队，你与<b>对家</b>一队。每人 27 张（两副牌），从 <b>2</b> 打到 <b>A</b>，先升到 A 并打过者胜。
+
+<h4>牌型</h4>
+<ul>
+<li>单张 / 对子 / 三张</li>
+<li><b>三带二</b>：三张 + 一对</li>
+<li><b>顺子</b>：5 张连续（A 可作最大或最小）</li>
+<li><b>三连对</b>：如 334455</li>
+<li><b>钢板</b>：如 555666（两个连续三张）</li>
+</ul>
+
+<h4>炸弹（从小到大）</h4>
+4炸 → 5炸 → <b>同花顺</b> → 6炸 → 7炸 → 8炸 → <b>四王炸</b><br>
+<span style="opacity:.8">同花顺比 5 炸大、比 6 炸小；四王炸最大。</span>
+
+<h4>逢人配</h4>
+<b>红桃级牌</b>（打几时的红桃几）是万能牌，可当任意牌凑牌型，<b>但不能当大小王</b>。
+
+<h4>出牌</h4>
+上家出牌后必须<b>同牌型且更大</b>才能跟，炸弹可压任何非炸弹牌型。<br>
+领出 <b>20 秒</b>、跟牌 <b>10 秒</b>，超时自动代打。
+
+<h4>接风</h4>
+某家出完牌后，若其余各家都"不要"，牌权归其<b>队友</b>自由领出。
+
+<h4>升级</h4>
+<ul>
+<li>头游 + 二游同队（<b>双下</b>）：升 <b>3</b> 级</li>
+<li>头游 + 三游同队（<b>一带二</b>）：升 <b>2</b> 级</li>
+<li>头游 + 末游同队：升 <b>1</b> 级</li>
+</ul>
+
+<h4>进贡 / 还贡</h4>
+上局末游需把<b>最大的牌</b>（红桃级牌除外）进贡给头游，头游还一张 10 以下的牌。<br>
+手握<b>双大王</b>可<b>抗贡</b>，免进贡。
+`;
+
+function openMenu() {
+  clearTurnTimer();                       // 菜单打开时暂停计时,避免被强制代打
+  $('menuMask').classList.add('on');
+}
+
+function closeMenu(resume) {
+  $('menuMask').classList.remove('on');
+  // 关闭后恢复当前回合者的计时
+  if (resume && G.running) startTurnTimer(G.turn);
+}
+
+function showRules() {
+  $('rulesBody').innerHTML = RULES_HTML;
+  $('rulesMask').classList.add('on');
+}
+
+/* 重新开始: 回到第一局, 级牌全部重置
+ * 参照 endRound 里"再来一局"分支(853行): 只需重置状态 + deal(),
+ * HUD 由 renderSeats() 内部刷新, 没有独立的 renderHud/startRound。
+ */
+function restartGame() {
+  closeMenu(false);
+  $('rulesMask').classList.remove('on');
+  clearTurnTimer();
+  clearTimeout(G.aiTimer);
+  G.gateSeq++;                            // 作废进行中的语音门闩
+  G.voiceGate = null;
+  G.running = false;
+  G.usLevel = '2';
+  G.themLevel = '2';
+  G.curLevel = '2';
+  G.round = 1;
+  G.lastOrder = null;                     // 新开局不进贡
+  G.plan = null;
+  G.hintList = [];
+  G.sel.clear();
+  showDlg('重新开始', '级牌回到 <b>2</b><br>四人两队 · 打级升A', '开始', () => {
+    deal();
+  });
+}
+
+/* 退出游戏: 优先调原生 finish(), 浏览器下退回首屏 */
+function quitGame() {
+  closeMenu(false);
+  clearTurnTimer();
+  clearTimeout(G.aiTimer);
+  if (window.AndroidApp && window.AndroidApp.quit) {
+    try { window.AndroidApp.quit(); return; } catch (e) {}
+  }
+  // 无原生桥(浏览器调试): 停止游戏并显示重开入口
+  G.running = false;
+  showDlg('已退出', '感谢试玩 👋', '重新开始', restartGame);
+}
+
+/* 安卓物理返回键: 按层级依次关闭, 什么都没开时打开菜单
+ * (由 MainActivity.onBackPressed 调用)
+ */
+window.onAndroidBack = function () {
+  if ($('rulesMask').classList.contains('on')) {
+    $('rulesMask').classList.remove('on');
+    return;
+  }
+  if ($('menuMask').classList.contains('on')) { closeMenu(true); return; }
+  if ($('wildPick').classList.contains('on')) return;   // 逢人配必须选,不给退
+  if ($('mask').classList.contains('on')) return;       // 结算/开局弹窗按按钮走
+  openMenu();
+};
+
 function showDlg(title, body, btn, fn) {
   $('dTitle').innerHTML = title;
   $('dBody').innerHTML = body;
@@ -794,6 +990,18 @@ $('btnPass').addEventListener('click', myPass);
 $('btnHint').addEventListener('click', myHint);
 $('btnSort').addEventListener('click', mySort);
 $('btnCount').addEventListener('click', toggleCounter);
+// 菜单
+$('hMenu').addEventListener('click', openMenu);
+$('mClose').addEventListener('click', () => closeMenu(true));
+$('mRules').addEventListener('click', showRules);
+$('rulesClose').addEventListener('click', () => $('rulesMask').classList.remove('on'));
+$('mRestart').addEventListener('click', restartGame);
+$('mQuit').addEventListener('click', quitGame);
+// 点遮罩空白处关闭
+$('menuMask').addEventListener('click', e => { if (e.target === $('menuMask')) closeMenu(true); });
+$('rulesMask').addEventListener('click', e => {
+  if (e.target === $('rulesMask')) $('rulesMask').classList.remove('on');
+});
 // 语音开关: 点击切换静音
 voiceInit();
 $('hVoice').addEventListener('click', () => {
