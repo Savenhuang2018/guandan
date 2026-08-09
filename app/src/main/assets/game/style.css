@@ -37,10 +37,14 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   background:linear-gradient(#00000000,#00000000);
 }
 
-/* ===== 顶部信息条 ===== */
+/* ===== 顶部信息条 =====
+ * 靠左上角: 避开中央出牌区,也避开横屏时居中的摄像头挖孔
+ * 用 --sa-left/top 保证挖孔机型下不被压住
+ */
 #hud{
-  position:absolute;top:calc(18px + var(--sa-top));left:50%;transform:translateX(-50%);
-  display:flex;gap:10px;align-items:center;z-index:30;
+  position:absolute;top:calc(10px + var(--sa-top));left:calc(14px + var(--sa-left));
+  display:flex;gap:8px;align-items:center;z-index:30;
+  flex-wrap:wrap;max-width:calc(100% - 28px - var(--sa-left) - var(--sa-right));
 }
 .chip{
   padding:5px 13px;border-radius:14px;font-size:12px;color:#f6e7c8;letter-spacing:.5px;
@@ -296,11 +300,27 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   font-size:12px;padding:2px 10px;
 }
 
-/* ===== 出牌倒计时 ===== */
-.chip.timer{background:rgba(0,0,0,.42);border-color:#5c8f74}
-.chip.timer b{min-width:18px;display:inline-block;text-align:center}
-.chip.timer.urgent{background:rgba(190,32,32,.85);border-color:#ff8080;
-  animation:tick .6s ease-in-out infinite}
+/* ===== 出牌倒计时 =====
+ * 位置跟到当前出牌人的出牌区旁(默认我方,在手牌上方)
+ * 独立于 #hud —— 原先挂在顶部信息条里,离视线焦点(手牌/出牌区)太远
+ */
+.turntimer{
+  position:absolute;z-index:31;display:none;
+  /* 靠右错开: #zS/#pS/#rS 都居中在同一 bottom,居中会四者重叠 */
+  bottom:calc(214px + var(--sa-bottom));
+  left:auto;right:calc(16px + var(--sa-right));transform:none;
+  padding:3px 11px;border-radius:13px;font-size:12px;letter-spacing:.5px;
+  color:#f6e7c8;background:rgba(0,0,0,.55);
+  border:1px solid #5c8f74;box-shadow:0 2px 6px rgba(0,0,0,.45);
+  white-space:nowrap;pointer-events:none;
+}
+.turntimer.on{display:block}
+.turntimer b{min-width:18px;display:inline-block;text-align:center;color:#ffd76a}
+.turntimer.urgent{
+  background:rgba(190,32,32,.9);border-color:#ff8080;
+  animation:tick .6s ease-in-out infinite;
+}
+.turntimer.urgent b{color:#fff}
 @keyframes tick{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
 
 /* ===== 横屏适配(主场景) =====
@@ -308,7 +328,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
  * 放文件末尾: 与前面同特异性规则靠后才生效
  */
 @media (orientation:landscape){
-  #hud{top:calc(6px + var(--sa-top));gap:8px}
+  #hud{top:calc(6px + var(--sa-top));left:calc(8px + var(--sa-left));gap:6px}
   .chip{padding:4px 9px;font-size:12px}
   #bar{bottom:calc(6px + var(--sa-bottom));gap:6px}
   .btn{padding:6px 13px;font-size:13px}
@@ -333,6 +353,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   #zW{left:calc(74px + var(--sa-left));top:44%}
   #zE{right:calc(74px + var(--sa-right));top:44%}
   #zS{bottom:calc(210px + var(--sa-bottom))}
+  .turntimer{bottom:calc(210px + var(--sa-bottom));font-size:11px;padding:2px 9px}
   .card.mini{width:30px;height:42px}
   .card.mini .r{font-size:11px}
   .card.mini .s{font-size:7px;top:11px}
@@ -358,6 +379,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   #zW{left:calc(66px + var(--sa-left));top:43%}
   #zE{right:calc(66px + var(--sa-right));top:43%}
   #zS{bottom:calc(184px + var(--sa-bottom))}
+  .turntimer{bottom:calc(184px + var(--sa-bottom))}
   .card.mini{width:26px;height:37px}
   .card.mini .r{font-size:10px}
   .card.mini .s{font-size:6px;top:10px}

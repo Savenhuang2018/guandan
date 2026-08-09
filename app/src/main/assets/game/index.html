@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>掼蛋</title>
-<link rel="stylesheet" href="style.css?v=17">
+<link rel="stylesheet" href="style.css?v=19">
 </head>
 <body>
 <div id="table">
@@ -16,8 +16,10 @@
     <div class="chip them">对方 <b id="hThem">2</b></div>
     <div class="chip">第 <b id="hRound">1</b> 局</div>
     <div class="chip" id="hVoice" style="cursor:pointer">🔊</div>
-  <div class="chip timer" id="hTimerChip">⏱ <b id="hTimer">--</b></div>
   </div>
+
+  <!-- 倒计时: 跟到当前出牌人的出牌区旁(仅人类座位计时) -->
+  <div class="turntimer" id="hTimerChip">⏱ <b id="hTimer">--</b></div>
 
   <div class="seat" id="seatN">
     <div class="avatar">🤖</div>
@@ -79,10 +81,10 @@
   </div></div>
 </div>
 
-<script src="rules.js?v=17"></script>
-<script src="ai.js?v=17"></script>
-<script src="arrange.js?v=17"></script>
-<script src="voice.js?v=17"></script>
-<script src="game.js?v=17"></script>
+<script src="rules.js?v=19"></script>
+<script src="ai.js?v=19"></script>
+<script src="arrange.js?v=19"></script>
+<script src="voice.js?v=19"></script>
+<script src="game.js?v=19"></script>
 </body>
 </html>

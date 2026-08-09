@@ -528,6 +528,87 @@ public class MainActivity extends Activity {
         }, new android.content.IntentFilter("com.aiden.guandan.RANKTEST"),
            android.content.Context.RECEIVER_EXPORTED);
 
+        // 验证 HUD 左上角 + 倒计时归位: adb shell am broadcast -a com.aiden.guandan.HUDTEST
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context c, android.content.Intent i) {
+                web.evaluateJavascript(
+                    "(function(){try{"
+                    + "['mask','wildPick','counter'].forEach(function(id){"
+                    + "  var e=document.getElementById(id); if(e)e.classList.remove('on')});"
+                    + "var R=function(id){var e=document.getElementById(id);"
+                    + "  if(!e) return null; var r=e.getBoundingClientRect();"
+                    + "  return {l:Math.round(r.left),t:Math.round(r.top),"
+                    + "    r:Math.round(r.right),b:Math.round(r.bottom),"
+                    + "    w:Math.round(r.width),h:Math.round(r.height),"
+                    + "    shown:getComputedStyle(e).display!=='none'}};"
+                    + "var hit=function(a,b){if(!a||!b)return false;"
+                    + "  return !(a.r<=b.l||b.r<=a.l||a.b<=b.t||b.b<=a.t)};"
+                    + "var out={vw:innerWidth,vh:innerHeight};"
+                    + "var cs=getComputedStyle(document.documentElement);"
+                    + "out.sa={l:cs.getPropertyValue('--sa-left').trim(),"
+                    + "  t:cs.getPropertyValue('--sa-top').trim(),"
+                    + "  r:cs.getPropertyValue('--sa-right').trim()};"
+                    + "out.hud=R('hud');"
+                    // HUD 必须在左上角: 左边距小 且 顶部靠上
+                    + "var saL=parseFloat(cs.getPropertyValue('--sa-left'))||0;"
+                    + "out.hud_isTopLeft=(out.hud.l<innerWidth*0.35)&&(out.hud.t<innerHeight*0.2);"
+                    + "out.hud_clearsCamera=(out.hud.l>=saL);"
+                    // HUD 与各出牌区/座位是否重叠
+                    + "out.hud_vs_zN=hit(out.hud,R('zN'));"
+                    + "out.hud_vs_zW=hit(out.hud,R('zW'));"
+                    + "out.hud_vs_seatW=hit(out.hud,R('seatW'));"
+                    + "out.hud_vs_seatN=hit(out.hud,R('seatN'));"
+                    + "out.hud_overflow=(out.hud.r>innerWidth+1)||(out.hud.b>innerHeight+1);"
+                    // 声音按钮在 HUD 内且可点
+                    + "var v=R('hVoice'); out.voice=v;"
+                    + "out.voice_inHud=(v&&out.hud&&v.l>=out.hud.l-1&&v.r<=out.hud.r+1);"
+                    + "var vc=document.getElementById('hVoice');"
+                    + "var vr=vc.getBoundingClientRect();"
+                    + "var vel=document.elementFromPoint(vr.left+vr.width/2,vr.top+vr.height/2);"
+                    + "out.voice_clickable=!!(vel&&(vel===vc||vc.contains(vel)));"
+                    // 非我回合应隐藏(原先常驻显示 "--")
+                    + "var tc0=document.getElementById('hTimerChip');"
+                    + "G.turn=2;clearTurnTimer();"
+                    + "out.timer_hiddenOffTurn=!tc0.classList.contains('on');"
+                    // 起表后应显示,且不与 zS/pS/rS 重叠
+                    + "G.running=true;G.ending=false;G.turn=0;G.lastPlay=null;"
+                    + "G.hands[0]=G.hands[0].length?G.hands[0]:[{id:900,r:'5',s:'S'}];"
+                    + "startTurnTimer();"
+                    + "var tc=document.getElementById('hTimerChip');"
+                    + "out.timer_shownOnTurn=tc.classList.contains('on');"
+                    + "out.timer=R('hTimerChip');"
+                    + "out.timer_text=document.getElementById('hTimer').textContent;"
+                    + "out.timer_vs_zS=hit(out.timer,R('zS'));"
+                    + "out.timer_vs_pS=hit(out.timer,R('pS'));"
+                    + "out.timer_vs_rS=hit(out.timer,R('rS'));"
+                    + "out.timer_vs_bar=hit(out.timer,R('bar'));"
+                    + "out.timer_vs_hand=hit(out.timer,R('hand'));"
+                    + "out.timer_overflow=(out.timer.r>innerWidth+1)||(out.timer.l<-1)"
+                    + "  ||(out.timer.b>innerHeight+1)||(out.timer.t<-1);"
+                    // 倒计时应贴近手牌区上沿(视线焦点),而非停在顶部信息条
+                    // 用与 #hand 的实际间距判断,比"下半屏"的粗糙阈值可靠
+                    + "var hd=R('hand');"
+                    + "out.timer_gapToHand=hd?(hd.t-out.timer.b):null;"
+                    + "out.timer_nearHand=!!(hd&&out.timer.b<=hd.t+4&&out.timer.b>=hd.t-40);"
+                    + "out.timer_belowCenter=out.timer.t>(R('center')||{b:0}).b;"
+                    // 参照坐标: 定位倒计时该放哪
+                    + "out.ref={hand:R('hand'),bar:R('bar'),zS:R('zS'),"
+                    + "  pS:R('pS'),rS:R('rS'),center:R('center')};"
+                    // 停表后应隐藏
+                    + "clearTurnTimer();"
+                    + "out.timer_hiddenAfterClear=!tc.classList.contains('on');"
+                    + "return JSON.stringify(out);"
+                    + "}catch(e){return 'ERR '+e.message}})()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override public void onReceiveValue(String s) {
+                            android.util.Log.i("GuandanWV", "HUDTEST " + s);
+                        }
+                    });
+            }
+        }, new android.content.IntentFilter("com.aiden.guandan.HUDTEST"),
+           android.content.Context.RECEIVER_EXPORTED);
+
         web.loadUrl("file:///android_asset/game/index.html");
         setContentView(web);
         hideBars();

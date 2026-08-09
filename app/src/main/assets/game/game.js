@@ -318,7 +318,7 @@ function clearTurnTimer() {
   G.turnLeft = 0;
   const el = $('hTimer'), chip = $('hTimerChip');
   if (el) el.textContent = '--';
-  if (chip) chip.classList.remove('urgent');
+  if (chip) chip.classList.remove('urgent', 'on');   // 不计时就隐藏,不再常驻显示 "--"
 }
 
 function startTurnTimer() {
@@ -330,6 +330,7 @@ function startTurnTimer() {
   G.turnLeft = G.lastPlay ? TURN_LIMIT : LEAD_LIMIT;
   const el = $('hTimer'), chip = $('hTimerChip');
   if (el) el.textContent = G.turnLeft;
+  if (chip) chip.classList.add('on');                // 显示在我的出牌区上方
   G.turnTimer = setInterval(() => {
     G.turnLeft--;
     if (el) el.textContent = G.turnLeft;
@@ -525,22 +526,28 @@ function doPass(seat) {
 function clearPassed() { G.passed = [false, false, false, false]; }
 
 function advance() {
-  // 局终判定: 只剩1家 或 一方双下 —— 必须原子,立刻停止接受新动作
-  if (activeCount() <= 1) {
+  // 局终判定 —— 必须原子,立刻停止接受新动作
+  //   1) 出现三游(只剩1家没出完) → 结束,剩下那家为末游
+  //   2) 同一队包揽头游+二游(双下) → 立刻结束,不必打到三游
+  const dd = G.finished.length >= 2 && teamOf(G.finished[0]) === teamOf(G.finished[1]);
+  if (activeCount() <= 1 || dd) {
     if (G.ending) return;          // 防重入(快速连点/异步竞态)
     G.ending = true;
     G.running = false;             // 立刻封盘,不等 endRound 的定时器
     clearTurnTimer();              // 局终停表
-    if (activeCount() === 1) {
-      const last = G.hands.findIndex(h => h.length > 0);
-      if (G.finished.indexOf(last) < 0) {
-        G.finished.push(last);
-        G.rankOf[last] = G.finished.length;   // 最后一家不经 doPlay,名次在此补上
-      }
-    }
+    // 未出完的按当前手牌数补名次(少的排前面),保证 finished 恒为4家
+    // —— doTribute 要按 order[2]/order[3] 取三游末游,缺项会读到 undefined
+    G.hands
+      .map((h, s) => ({ s, n: h.length }))
+      .filter(x => x.n > 0 && G.finished.indexOf(x.s) < 0)
+      .sort((a, b) => a.n - b.n)
+      .forEach(x => {
+        G.finished.push(x.s);
+        G.rankOf[x.s] = G.finished.length;   // 这些家不经 doPlay,名次在此补上
+      });
     clearTimeout(G.aiTimer);
     updateBar();
-    refresh();                       // 让末游标记立刻显示,不等下一次渲染
+    refresh();                       // 让名次标记立刻显示,不等下一次渲染
     return setTimeout(endRound, 700);
   }
 
