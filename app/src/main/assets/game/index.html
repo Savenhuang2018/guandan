@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>掼蛋</title>
+<link rel="stylesheet" href="style.css?v=16">
+</head>
+<body>
+<div id="table">
+  <div id="rail"></div>
+
+  <div id="hud">
+    <div class="chip">级牌 <b id="hLevel">2</b></div>
+    <div class="chip us">我方 <b id="hUs">2</b></div>
+    <div class="chip them">对方 <b id="hThem">2</b></div>
+    <div class="chip">第 <b id="hRound">1</b> 局</div>
+    <div class="chip" id="hVoice" style="cursor:pointer">🔊</div>
+  <div class="chip timer" id="hTimerChip">⏱ <b id="hTimer">--</b></div>
+  </div>
+
+  <div class="seat" id="seatN">
+    <div class="avatar">🤖</div>
+    <div class="nm">对家</div>
+    <div class="cnt"><span id="cN">27</span> 张</div>
+    <div class="passtag" id="pN">不要</div>
+  </div>
+  <div class="seat" id="seatW">
+    <div class="avatar">👤</div>
+    <div class="nm">左家</div>
+    <div class="cnt"><span id="cW">27</span> 张</div>
+    <div class="passtag" id="pW">不要</div>
+  </div>
+  <div class="seat" id="seatE">
+    <div class="avatar">👤</div>
+    <div class="nm">右家</div>
+    <div class="cnt"><span id="cE">27</span> 张</div>
+    <div class="passtag" id="pE">不要</div>
+  </div>
+
+  <!-- 各家出的牌: 对家显示在其下方, 左家在右侧, 右家在左侧 -->
+  <div class="playzone" id="zN"></div>
+  <div class="playzone" id="zW"></div>
+  <div class="playzone" id="zE"></div>
+  <div class="playzone" id="zS"></div>
+
+  <div id="center">
+    <div id="centerCards"></div>
+    <div id="centerTip">点「开始」发牌</div>
+  </div>
+
+  <div id="hand"></div>
+  <div class="passtag" id="pS">不要</div>
+
+  <div id="bar">
+    <div class="btn ghost" id="btnPass">不要</div>
+    <div class="btn" id="btnPlay">出牌</div>
+    <div class="btn ghost" id="btnHint">提示</div>
+    <div class="btn ghost" id="btnSort">理牌</div>
+    <div class="btn ghost" id="btnCount">记牌</div>
+  </div>
+
+  <div id="counter"></div>
+
+  <div id="wildPick"><div class="wp-box">
+    <div class="wp-ttl">逢人配当什么牌？</div>
+    <div class="wp-list" id="wpList"></div>
+    <div class="wp-cancel" id="wpCancel">取消</div>
+  </div></div>
+
+  <div id="mask"><div id="dlg">
+    <h2 id="dTitle">掼蛋</h2>
+    <p id="dBody">四人两队 · 打级升A<br>你与「对家」是一队</p>
+    <div class="btn" id="dBtn">开始</div>
+  </div></div>
+</div>
+
+<script src="rules.js?v=16"></script>
+<script src="ai.js?v=16"></script>
+<script src="arrange.js?v=16"></script>
+<script src="voice.js?v=16"></script>
+<script src="game.js?v=16"></script>
+</body>
+</html>

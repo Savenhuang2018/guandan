@@ -1,0 +1,342 @@
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;
+  user-select:none;-webkit-user-select:none}
+html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helvetica Neue",Arial,sans-serif}
+
+/* ===== 手机安全区适配 =====
+ * 刘海/灵动岛 → 顶部内缩; 手势条/圆角 → 底部内缩
+ * 用 CSS 变量集中管理,所有绝对定位元素基于它偏移
+ */
+:root{
+  --sa-top:env(safe-area-inset-top,0px);
+  --sa-bottom:env(safe-area-inset-bottom,0px);
+  --sa-left:env(safe-area-inset-left,0px);
+  --sa-right:env(safe-area-inset-right,0px);
+}
+
+/* ===== 经典绒面牌桌 ===== */
+#table{
+  position:relative;width:100%;height:100%;
+  background:
+    radial-gradient(ellipse at 50% 42%, #1d7a4c 0%, #14603c 45%, #0b3d2e 78%, #072a20 100%);
+  box-shadow:inset 0 0 160px rgba(0,0,0,.55);
+}
+#table::after{ /* 绒布颗粒 */
+  content:"";position:absolute;inset:0;pointer-events:none;opacity:.16;
+  background-image:radial-gradient(rgba(255,255,255,.5) .5px, transparent .6px);
+  background-size:3px 3px;
+}
+/* 桌沿木框 */
+#rail{
+  position:absolute;
+  top:calc(6px + var(--sa-top));bottom:calc(6px + var(--sa-bottom));
+  left:calc(6px + var(--sa-left));right:calc(6px + var(--sa-right));
+  border-radius:22px;pointer-events:none;
+  border:9px solid #6b4326;
+  box-shadow:0 0 0 2px #3b2413 inset, 0 0 0 2px #8a5a33, 0 14px 34px rgba(0,0,0,.5);
+  background:linear-gradient(#00000000,#00000000);
+}
+
+/* ===== 顶部信息条 ===== */
+#hud{
+  position:absolute;top:calc(18px + var(--sa-top));left:50%;transform:translateX(-50%);
+  display:flex;gap:10px;align-items:center;z-index:30;
+}
+.chip{
+  padding:5px 13px;border-radius:14px;font-size:12px;color:#f6e7c8;letter-spacing:.5px;
+  background:linear-gradient(#2a5c42,#1b4531);border:1px solid rgba(246,231,200,.35);
+  box-shadow:0 2px 6px rgba(0,0,0,.4)
+}
+.chip b{color:#ffd76a;font-size:14px}
+.chip.us b{color:#7fe3a4}.chip.them b{color:#ff9d8a}
+
+/* ===== 座位 ===== */
+.seat{position:absolute;z-index:20;text-align:center;color:#eae0c8}
+.seat .avatar{
+  width:46px;height:46px;border-radius:50%;margin:0 auto 4px;
+  background:linear-gradient(#3d7a5b,#22503a);border:2px solid rgba(246,231,200,.5);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+  box-shadow:0 3px 10px rgba(0,0,0,.45)
+}
+.seat .nm{font-size:12px;opacity:.92}
+.seat .cnt{font-size:11px;color:#ffd76a}
+.seat.act .avatar{border-color:#ffd76a;box-shadow:0 0 0 3px rgba(255,215,106,.3),0 0 20px rgba(255,215,106,.55)}
+.seat.mate .nm::after{content:" ·队友";color:#7fe3a4;font-size:10px}
+#seatN{top:64px;left:50%;transform:translateX(-50%)}
+#seatW{left:34px;top:47%;transform:translateY(-50%)}
+#seatE{right:34px;top:47%;transform:translateY(-50%)}
+
+/* 对手暗牌堆已移除: 不显示其他三家手里的牌 */
+.backs i{
+  display:block;width:15px;height:21px;margin-left:-9px;border-radius:2px;
+  background:repeating-linear-gradient(45deg,#8d1f1f 0 3px,#a82c2c 3px 6px);
+  border:1px solid #f0e6d2;box-shadow:0 1px 3px rgba(0,0,0,.4)
+}
+.backs i:first-child{margin-left:0}
+
+/* ===== 中央出牌区 ===== */
+#center{
+  position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);
+  min-width:180px;min-height:96px;display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+#centerCards{display:flex;justify-content:center;align-items:flex-end;height:88px}
+#centerTip{font-size:12px;color:#cfe8d8;opacity:.85;text-shadow:0 1px 2px #000}
+
+/* ===== 各家出牌区 =====
+ * 谁出的牌显示在谁的方位: 对家在其下方 / 左家在其右侧 / 右家在其左侧 / 我在手牌上方
+ * 都避开中央提示区(#center),不遮挡上方出牌空间
+ */
+.playzone{
+  position:absolute;display:none;align-items:flex-end;
+  pointer-events:none;z-index:8;
+}
+.playzone.on{display:flex}
+/* 对家: 头像正下方 */
+#zN{top:132px;left:50%;transform:translateX(-50%)}
+/* 左家: 座位右侧(牌往中间伸) */
+#zW{left:104px;top:47%;transform:translateY(-50%)}
+/* 右家: 座位左侧(牌往中间伸) */
+#zE{right:104px;top:47%;transform:translateY(-50%);justify-content:flex-end}
+/* 我: 手牌区上方 */
+#zS{bottom:calc(214px + var(--sa-bottom));left:50%;transform:translateX(-50%)}
+/* 出牌区小牌 */
+.card.mini{width:34px;height:48px;border-radius:4px}
+.card.mini .r{top:1px;left:2px;font-size:12px}
+.card.mini .s{top:12px;left:2px;font-size:8px}
+.card.mini .big{right:2px;bottom:1px;font-size:13px}
+.card.mini.joker .r{font-size:8px;letter-spacing:-1px}
+.card.mini.lvl::before{width:11px;height:11px;font-size:7px;line-height:11px;top:-3px;right:-3px}
+
+/* ===== 扑克牌 ===== */
+.card{
+  position:relative;width:62px;height:88px;border-radius:6px;flex:0 0 auto;
+  background:linear-gradient(#ffffff,#f4f1e8);
+  border:1px solid #cfc7b4;
+  box-shadow:0 2px 5px rgba(0,0,0,.35), inset 0 0 0 1px #fff;
+  margin-left:-30px;transition:transform .13s ease, box-shadow .13s ease;
+}
+.card:first-child{margin-left:0}
+.card .r{position:absolute;top:3px;left:5px;font-size:19px;font-weight:700;line-height:1;font-family:Georgia,"Times New Roman",serif}
+.card .s{position:absolute;top:22px;left:5px;font-size:14px;line-height:1}
+.card .big{position:absolute;right:6px;bottom:4px;font-size:30px;opacity:.9}
+/* 四色牌: 红桃红 / 黑桃黑 / 方块黄 / 梅花绿 */
+.card.sH{color:#d3202a}                     /* ♥ 红桃 - 红 */
+.card.sS{color:#1a1a1a}                     /* ♠ 黑桃 - 黑 */
+.card.sD{color:#d99000}                     /* ♦ 方块 - 黄(压深保证白底可读) */
+.card.sC{color:#1f8a4c}                     /* ♣ 梅花 - 绿 */
+.card.joker .r{font-size:14px;letter-spacing:-1px}
+.card.sel{transform:translateY(-24px);box-shadow:0 10px 18px rgba(0,0,0,.45),0 0 0 2px #ffd76a}
+.card.lvl::before{ /* 级牌角标 */
+  content:"级";position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;
+  background:#ffd76a;color:#5a3b00;font-size:10px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.4)
+}
+/* 中央区已出的牌略小 */
+#centerCards .card{width:54px;height:76px;margin-left:-26px}
+#centerCards .card .r{font-size:16px}
+#centerCards .card .big{font-size:25px}
+
+/* ===== 我的手牌 ===== */
+#hand{
+  position:absolute;bottom:calc(74px + var(--sa-bottom));left:50%;transform:translateX(-50%);
+  display:flex;justify-content:center;align-items:flex-end;
+  height:150px;width:100%;
+}
+#hand{touch-action:none}          /* 滑动选牌: 禁止浏览器接管手势 */
+#hand .hcol{position:relative;flex:0 0 auto;transition:height .13s ease}
+#hand .card{transition:bottom .13s ease}
+#hand .card{cursor:pointer}
+
+/* 手牌区专用小尺寸牌(中央出牌区保持原尺寸) */
+#hand .card{width:36px;height:52px;border-radius:4px}
+#hand .card .r{top:1px;left:2px;font-size:13px}
+#hand .card .s{top:14px;left:2px;font-size:9px}
+#hand .card .big{right:2px;bottom:1px;font-size:15px}
+#hand .card.joker .r{font-size:9px;letter-spacing:-1px}
+#hand .card.lvl::before{width:12px;height:12px;font-size:7px;top:-3px;right:-3px;line-height:12px}
+/* 手牌选中: 不位移(靠整列展开表达),加灰色遮罩层 */
+#hand .card.sel{transform:none}
+#hand .card.sel::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;
+  background:rgba(60,60,60,.42);
+  box-shadow:inset 0 0 0 2px #ffd76a;
+  pointer-events:none;
+}
+
+/* ===== 按钮区 ===== */
+#bar{
+  position:absolute;bottom:calc(14px + var(--sa-bottom));left:50%;transform:translateX(-50%);
+  display:flex;gap:8px;align-items:center;z-index:30
+}
+.btn{
+  padding:9px 16px;border-radius:20px;font-size:14px;font-weight:600;color:#3a2a08;
+  background:linear-gradient(#ffe08a,#e8b64a);border:1px solid #b98c2a;
+  box-shadow:0 3px 0 #a87c22,0 6px 12px rgba(0,0,0,.35);cursor:pointer;white-space:nowrap
+}
+
+/* ===== 记牌器 ===== */
+#counter{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:200px;
+  display:none;z-index:70;padding:10px 12px;border-radius:12px;
+  background:rgba(8,32,24,.94);border:1px solid rgba(255,215,106,.45);
+  box-shadow:0 6px 20px rgba(0,0,0,.5);max-width:94%;
+}
+#counter.on{display:block}
+#counter table{border-collapse:collapse}
+#counter td{
+  padding:2px 5px;font-size:12px;text-align:center;color:#f0e6d2;
+  font-family:Georgia,serif;min-width:20px
+}
+#counter td.hd{color:#ffd76a;font-weight:700;border-bottom:1px solid rgba(255,215,106,.3)}
+#counter td.z{color:#7a6a52}
+#counter td.lv{color:#ffd76a}
+#counter .ttl{font-size:11px;color:#cfe8d8;margin-bottom:5px;text-align:center}
+
+/* ===== 逢人配选择器 ===== */
+#wildPick{
+  position:absolute;inset:0;display:none;z-index:90;
+  background:rgba(0,0,0,.55);align-items:center;justify-content:center
+}
+#wildPick.on{display:flex}
+.wp-box{
+  width:min(88%,330px);padding:16px 14px;border-radius:16px;
+  background:linear-gradient(#12452f,#0c2e20);
+  border:1px solid rgba(255,215,106,.5);box-shadow:0 12px 32px rgba(0,0,0,.6)
+}
+.wp-ttl{font-size:15px;font-weight:700;color:#ffd76a;text-align:center;margin-bottom:12px}
+.wp-list{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto}
+.wp-item{
+  padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;color:#3a2a08;
+  background:linear-gradient(#ffe08a,#e8b64a);border:1px solid #b98c2a;
+  cursor:pointer;text-align:center
+}
+.wp-item.bomb{
+  color:#fff2d8;background:linear-gradient(#c0392b,#8e2419);border-color:#e05a45
+}
+.wp-item:active{transform:translateY(1px)}
+.wp-cancel{
+  margin-top:12px;padding:9px;border-radius:10px;text-align:center;font-size:13px;
+  color:#eee6d2;background:rgba(255,255,255,.08);
+  border:1px solid rgba(238,230,210,.3);cursor:pointer
+}
+
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 #a87c22}
+.btn.ghost{color:#eee6d2;background:linear-gradient(#3a6b52,#254a37);border-color:rgba(238,230,210,.35);box-shadow:0 3px 0 #1a3527,0 6px 12px rgba(0,0,0,.3)}
+.btn[disabled]{opacity:.42;pointer-events:none}
+
+/* ===== 飘字提示 ===== */
+.float{
+  position:absolute;z-index:60;padding:6px 16px;border-radius:16px;font-size:15px;font-weight:700;
+  color:#fff7dd;background:rgba(0,0,0,.62);border:1px solid rgba(255,215,106,.6);
+  animation:pop 1.1s ease forwards;pointer-events:none;white-space:nowrap
+}
+.float.bomb{color:#fff;background:rgba(178,26,26,.85);border-color:#ffb3a0;font-size:18px}
+@keyframes pop{0%{transform:translate(-50%,0) scale(.7);opacity:0}
+ 22%{transform:translate(-50%,-14px) scale(1.06);opacity:1}
+ 75%{opacity:1}100%{transform:translate(-50%,-34px) scale(1);opacity:0}}
+
+/* ===== 弹窗 ===== */
+#mask{position:absolute;inset:0;background:rgba(0,0,0,.62);z-index:80;display:none;
+  align-items:center;justify-content:center}
+#mask.on{display:flex}
+#dlg{
+  min-width:280px;max-width:78%;padding:22px 26px;border-radius:16px;text-align:center;color:#f7edd6;
+  background:linear-gradient(#1f5540,#143b2c);border:2px solid #ffd76a;
+  box-shadow:0 20px 50px rgba(0,0,0,.6)
+}
+#dlg h2{font-size:20px;margin-bottom:10px;color:#ffd76a}
+#dlg p{font-size:14px;line-height:1.7;opacity:.95}
+#dlg .btn{margin-top:16px}
+
+
+
+/* ===== 持久"不要"标记 =====
+ * 一直显示到新一轮开始; 我自己的挂在手牌上方
+ */
+.passtag{
+  display:none;margin-top:3px;
+  font-size:11px;font-weight:700;letter-spacing:1px;
+  color:#ffe9c0;background:rgba(120,20,20,.88);
+  border:1px solid #ff9a9a;border-radius:9px;
+  padding:1px 8px;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(0,0,0,.45);
+}
+.passtag.on{display:inline-block}
+/* 我的标记: 绝对定位在手牌区上方居中 */
+#pS{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(214px + var(--sa-bottom));z-index:31;
+  font-size:12px;padding:2px 10px;
+}
+
+/* ===== 出牌倒计时 ===== */
+.chip.timer{background:rgba(0,0,0,.42);border-color:#5c8f74}
+.chip.timer b{min-width:18px;display:inline-block;text-align:center}
+.chip.timer.urgent{background:rgba(190,32,32,.85);border-color:#ff8080;
+  animation:tick .6s ease-in-out infinite}
+@keyframes tick{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+
+/* ===== 横屏适配(主场景) =====
+ * 横屏屏高小,竖向堆叠空间紧张 → 压缩上下留白,给手牌区腾高度
+ * 放文件末尾: 与前面同特异性规则靠后才生效
+ */
+@media (orientation:landscape){
+  #hud{top:calc(6px + var(--sa-top));gap:8px}
+  .chip{padding:4px 9px;font-size:12px}
+  #bar{bottom:calc(6px + var(--sa-bottom));gap:6px}
+  .btn{padding:6px 13px;font-size:13px}
+  #hand{bottom:calc(46px + var(--sa-bottom));height:158px}
+  #hand .card{width:38px;height:54px}
+  /* 中央出牌区上移+缩小,给竖堆手牌腾空间 */
+  #center{top:34%;min-height:auto}
+  #centerCards{height:0}
+  #centerTip{font-size:11px}
+  /* 横屏: 出牌区贴近各自座位,避开中央与手牌 */
+  /* 横屏屏高小: 压缩座位块,给出牌区腾空间 */
+  .seat .avatar{width:30px;height:30px;font-size:14px;margin-bottom:2px;border-width:1px}
+  .seat .nm{font-size:10px}
+  .seat .cnt{font-size:10px}
+  #seatN{top:6px}
+  #seatW{left:24px;top:44%}
+  #seatE{right:24px;top:44%}
+  #zN{top:66px}
+  #zW{left:74px;top:44%}
+  #zE{right:74px;top:44%}
+  #zS{bottom:calc(210px + var(--sa-bottom))}
+  .card.mini{width:30px;height:42px}
+  .card.mini .r{font-size:11px}
+  .card.mini .s{font-size:7px;top:11px}
+  .card.mini .big{font-size:11px}
+}
+
+/* 横屏且很矮(<=400px): 再压一档 */
+@media (orientation:landscape) and (max-height:400px){
+  #hud{top:calc(3px + var(--sa-top))}
+  .chip{padding:3px 7px;font-size:11px}
+  #bar{bottom:calc(3px + var(--sa-bottom))}
+  .btn{padding:5px 11px;font-size:12px}
+  #hand{bottom:calc(38px + var(--sa-bottom));height:134px}
+  #hand .card{width:34px;height:48px}
+  #hand .card .r{font-size:12px}
+  #hand .card .s{font-size:8px;top:12px}
+  #hand .card .big{font-size:13px}
+  #center{top:30%}
+  #centerCards{height:0}
+  .seat .avatar{width:26px;height:26px;font-size:12px}
+  #seatN{top:4px}
+  #zN{top:64px}
+  #zW{left:66px;top:43%}
+  #zE{right:66px;top:43%}
+  #zS{bottom:calc(184px + var(--sa-bottom))}
+  .card.mini{width:26px;height:37px}
+  .card.mini .r{font-size:10px}
+  .card.mini .s{font-size:6px;top:10px}
+  .card.mini .big{font-size:10px}
+}
+
+/* 竖屏兜底(仍支持,但非主场景) */
+@media (orientation:portrait) and (max-height:700px){
+  #hand{bottom:calc(58px + var(--sa-bottom));height:120px}
+  #hand .card{width:32px;height:46px}
+  .btn{padding:7px 12px;font-size:13px}
+}

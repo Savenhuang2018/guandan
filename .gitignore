@@ -1,0 +1,33 @@
+# Build
+build/
+app/build/
+.gradle/
+.cxx/
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+local.properties
+
+# Keystore / 签名（不要提交）
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# 调试临时文件
+__probe.js
