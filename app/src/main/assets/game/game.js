@@ -7,12 +7,14 @@
 const SEAT_KEY = ['S','E','N','W'];
 const SEAT_NAME = ['我','右家','对家','左家'];
 const LEVELS = RANKS;                       // '2'..'A'
+const RANK_NAME = ['头游','二游','三游','末游'];
 
 const G = {
   hands: [[], [], [], []],
   turn: 0,
   lastPlay: null,        // {seat, cards, e}
   finished: [],          // 出完牌的座位顺序
+  rankOf: [0, 0, 0, 0],  // 各座名次(1~4, 0=未出完); 持续显示到下一局发牌
   curLevel: '2',         // 本局级牌
   usLevel: '2',
   themLevel: '2',
@@ -241,14 +243,28 @@ function renderSeats() {
     // 持久"不要"标记: 出完牌的人不显示
     const tag = $('p' + k);
     if (tag) tag.classList.toggle('on', !!G.passed[s] && n > 0);
+    renderRankTag(s, k);
   }
   // 我自己的"不要"标记
   const myTag = $('pS');
   if (myTag) myTag.classList.toggle('on', !!G.passed[0] && G.hands[0].length > 0);
+  renderRankTag(0, 'S');
   $('hLevel').textContent = G.curLevel;
   $('hUs').textContent = G.usLevel;
   $('hThem').textContent = G.themLevel;
   $('hRound').textContent = G.round;
+}
+
+/* 名次标记: 头游/二游/三游/末游,持续显示到下一局发牌 */
+function renderRankTag(seat, k) {
+  const el = $('r' + k);
+  if (!el) return;
+  const rank = G.rankOf[seat];
+  if (!rank) { el.classList.remove('on', 'first', 'last'); el.textContent = ''; return; }
+  el.textContent = RANK_NAME[rank - 1];
+  el.classList.add('on');
+  el.classList.toggle('first', rank === 1);
+  el.classList.toggle('last', rank === 4);
 }
 
 /* ---------- 渲染: 各家出牌区 ----------
@@ -379,6 +395,7 @@ function deal() {
   G.turn = 0;
   G.lastPlay = null;
   G.finished = [];
+  G.rankOf = [0, 0, 0, 0];     // 新局清名次标记(上局的显示到此刻为止)
   G.sel.clear();
   G.hintList = [];
   G.running = true;
@@ -487,7 +504,8 @@ function doPlay(seat, cards, e) {
   if (G.hands[seat].length === 0) {
     G.finished.push(seat);
     const rank = G.finished.length;
-    const tag = ['头游', '二游', '三游', '末游'][rank - 1];
+    const tag = RANK_NAME[rank - 1];
+    G.rankOf[seat] = rank;                        // 持久名次,渲染到座位旁
     setTimeout(() => toast(SEAT_NAME[seat] + ' ' + tag, seat), 420);
   }
   refresh();
@@ -515,10 +533,14 @@ function advance() {
     clearTurnTimer();              // 局终停表
     if (activeCount() === 1) {
       const last = G.hands.findIndex(h => h.length > 0);
-      if (G.finished.indexOf(last) < 0) G.finished.push(last);
+      if (G.finished.indexOf(last) < 0) {
+        G.finished.push(last);
+        G.rankOf[last] = G.finished.length;   // 最后一家不经 doPlay,名次在此补上
+      }
     }
     clearTimeout(G.aiTimer);
     updateBar();
+    refresh();                       // 让末游标记立刻显示,不等下一次渲染
     return setTimeout(endRound, 700);
   }
 

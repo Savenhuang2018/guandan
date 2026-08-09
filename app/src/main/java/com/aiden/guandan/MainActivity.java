@@ -446,6 +446,88 @@ public class MainActivity extends Activity {
         }, new android.content.IntentFilter("com.aiden.guandan.VOICE"),
            android.content.Context.RECEIVER_EXPORTED);
 
+        // 验证名次标记 + 摄像头避让: adb shell am broadcast -a com.aiden.guandan.RANKTEST
+        registerReceiver(new android.content.BroadcastReceiver() {
+            @Override
+            public void onReceive(android.content.Context c, android.content.Intent i) {
+                web.evaluateJavascript(
+                    "(function(){try{"
+                    + "var K=['S','E','N','W'];"
+                    + "var snap=function(){return K.map(function(k){"
+                    + "  var e=document.getElementById('r'+k);"
+                    + "  if(!e) return 'MISSING';"
+                    + "  var on=getComputedStyle(e).display!=='none';"
+                    + "  return on?(e.textContent||'(空)'):'-'})};"
+                    + "['mask','wildPick','counter'].forEach(function(id){"
+                    + "  var e=document.getElementById(id); if(e)e.classList.remove('on')});"
+                    + "var C=function(r,s,id){return {id:id,r:r,s:s}};"
+                    + "var out={};"
+                    // 安全区与座位实际位置
+                    + "var cs=getComputedStyle(document.documentElement);"
+                    + "out.safeArea={l:cs.getPropertyValue('--sa-left').trim(),"
+                    + "  r:cs.getPropertyValue('--sa-right').trim(),"
+                    + "  t:cs.getPropertyValue('--sa-top').trim()};"
+                    + "var wR=document.getElementById('seatW').getBoundingClientRect();"
+                    + "var eR=document.getElementById('seatE').getBoundingClientRect();"
+                    + "out.seatW={left:Math.round(wR.left),right:Math.round(wR.right)};"
+                    + "out.seatE={left:Math.round(eR.left),right:Math.round(eR.right)};"
+                    + "out.vw=innerWidth;"
+                    // 左家必须整体在安全区右侧(避开摄像头)
+                    + "var saL=parseFloat(cs.getPropertyValue('--sa-left'))||0;"
+                    + "out.saLeftPx=saL;"
+                    + "out.seatW_clearsCamera=(wR.left>=saL);"
+                    + "out.seatE_clearsCamera=(eR.right<=innerWidth-(parseFloat(cs.getPropertyValue('--sa-right'))||0));"
+                    // 驱动一局: 2头游 -> 0二游 -> 1三游 -> 3末游
+                    + "G.running=true;G.ending=false;G.finished=[];G.rankOf=[0,0,0,0];"
+                    + "clearTurnTimer();clearPassed();"
+                    + "G.hands=[[C('4','S','a')],[C('5','C','b')],[C('6','D','c')],"
+                    + "  [C('7','H','d'),C('8','H','e')]];"
+                    + "G.turn=2;G.lastPlay=null;refresh();"
+                    + "out.r0_start=snap();"
+                    + "doPlay(2,[G.hands[2][0]],evalCards([C('6','D','c')],G.curLevel));"
+                    + "out.r1_seat2=snap();"
+                    + "G.lastPlay=null;G.turn=0;refresh();"
+                    + "doPlay(0,[G.hands[0][0]],evalCards([C('4','S','a')],G.curLevel));"
+                    + "out.r2_me=snap();"
+                    + "G.lastPlay=null;G.turn=1;refresh();"
+                    + "doPlay(1,[G.hands[1][0]],evalCards([C('5','C','b')],G.curLevel));"
+                    + "out.r3_all=snap();"
+                    + "out.rankOf=G.rankOf.slice();"
+                    // 标记不能被遮挡: 检查每个 ranktag 中心点归属
+                    + "out.visible=K.map(function(k){"
+                    + "  var e=document.getElementById('r'+k);"
+                    + "  if(!e||getComputedStyle(e).display==='none') return k+':off';"
+                    + "  var r=e.getBoundingClientRect();"
+                    + "  if(r.width===0) return k+':zero';"
+                    + "  var el=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);"
+                    + "  var own=el&&(el===e||e.contains(el)||el.closest('.ranktag')===e);"
+                    + "  return k+':'+(own?'ok':'BLOCKED_by_'+(el?el.className||el.id:'null'))});"
+                    // 标记不能溢出屏幕
+                    + "out.overflow=K.filter(function(k){"
+                    + "  var e=document.getElementById('r'+k);"
+                    + "  if(!e||getComputedStyle(e).display==='none') return false;"
+                    + "  var r=e.getBoundingClientRect();"
+                    + "  return r.left<-1||r.right>innerWidth+1||r.top<-1||r.bottom>innerHeight+1});"
+                    // 持久性: 多次 refresh 不丢
+                    + "refresh();refresh();out.persist=snap();"
+                    // 名次与不要标记互斥
+                    + "G.passed=[true,true,true,true];refresh();"
+                    + "out.passOnFinished=['pS','pE','pN','pW'].map(function(id){"
+                    + "  var e=document.getElementById(id);"
+                    + "  return e?getComputedStyle(e).display!=='none':null});"
+                    // 新局清空
+                    + "G.lastOrder=null;deal();out.afterDeal=snap();"
+                    + "return JSON.stringify(out);"
+                    + "}catch(e){return 'ERR '+e.message+' @'+e.lineNumber}})()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override public void onReceiveValue(String s) {
+                            android.util.Log.i("GuandanWV", "RANKTEST " + s);
+                        }
+                    });
+            }
+        }, new android.content.IntentFilter("com.aiden.guandan.RANKTEST"),
+           android.content.Context.RECEIVER_EXPORTED);
+
         web.loadUrl("file:///android_asset/game/index.html");
         setContentView(web);
         hideBars();

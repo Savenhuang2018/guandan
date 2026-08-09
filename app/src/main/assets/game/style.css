@@ -262,6 +262,33 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   box-shadow:0 2px 6px rgba(0,0,0,.45);
 }
 .passtag.on{display:inline-block}
+
+/* ===== 名次标记(头游/二游/三游/末游) =====
+ * 持续显示到下一局发牌,与"不要"标记区分: 金色渐变 + 头游描金边
+ */
+.ranktag{
+  display:none;margin-top:3px;
+  font-size:11px;font-weight:700;letter-spacing:1px;
+  color:#3a2708;background:linear-gradient(#ffdc7a,#e8ac2e);
+  border:1px solid #fff0c0;border-radius:9px;
+  padding:1px 8px;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(0,0,0,.45);
+}
+.ranktag.on{display:inline-block}
+.ranktag.first{                       /* 头游: 更亮 + 微光 */
+  background:linear-gradient(#fff3b0,#ffc93c);
+  box-shadow:0 0 10px rgba(255,201,60,.7),0 2px 6px rgba(0,0,0,.45);
+}
+.ranktag.last{                        /* 末游: 灰调,避免和头游混 */
+  color:#e8e0d0;background:linear-gradient(#6b6b6b,#4a4a4a);
+  border-color:#9a9a9a;box-shadow:0 2px 6px rgba(0,0,0,.45);
+}
+/* 我的名次: 与 #pS 同位置,pS 隐藏时占位 */
+#rS{
+  position:absolute;left:50%;transform:translateX(-50%);
+  bottom:calc(214px + var(--sa-bottom));z-index:31;
+  font-size:12px;padding:2px 10px;
+}
 /* 我的标记: 绝对定位在手牌区上方居中 */
 #pS{
   position:absolute;left:50%;transform:translateX(-50%);
@@ -297,11 +324,14 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   .seat .nm{font-size:10px}
   .seat .cnt{font-size:10px}
   #seatN{top:6px}
-  #seatW{left:24px;top:44%}
-  #seatE{right:24px;top:44%}
+  /* 左右家避开摄像头挖孔/刘海: 横屏时挖孔转到侧边,
+   * safe-area-inset-left/right 即其宽度。再留 6px 呼吸位。
+   * 挖孔机型上 --sa-left 常为 30~50px,无挖孔机型为 0 → 退化回原值。 */
+  #seatW{left:calc(24px + var(--sa-left));top:44%}
+  #seatE{right:calc(24px + var(--sa-right));top:44%}
   #zN{top:66px}
-  #zW{left:74px;top:44%}
-  #zE{right:74px;top:44%}
+  #zW{left:calc(74px + var(--sa-left));top:44%}
+  #zE{right:calc(74px + var(--sa-right));top:44%}
   #zS{bottom:calc(210px + var(--sa-bottom))}
   .card.mini{width:30px;height:42px}
   .card.mini .r{font-size:11px}
@@ -325,8 +355,8 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:"PingFang SC","Helv
   .seat .avatar{width:26px;height:26px;font-size:12px}
   #seatN{top:4px}
   #zN{top:64px}
-  #zW{left:66px;top:43%}
-  #zE{right:66px;top:43%}
+  #zW{left:calc(66px + var(--sa-left));top:43%}
+  #zE{right:calc(66px + var(--sa-right));top:43%}
   #zS{bottom:calc(184px + var(--sa-bottom))}
   .card.mini{width:26px;height:37px}
   .card.mini .r{font-size:10px}
